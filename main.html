@@ -222,11 +222,22 @@
                     <label for="userName">用户名:</label>
                     <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
                 </div>
-                <div> <!-- New block for user avatar -->
-                    <label for="userAvatarInput">用户头像:</label>
-                    <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif">
-                    <img id="userAvatarPreview" src="#" alt="用户头像预览" style="max-width: 60px; max-height: 60px; display: none; margin-top: 5px; border-radius: 50%;">
+            <div class="avatar-setting-container"> <!-- Added a wrapper for better layout -->
+                <label for="userAvatarInput">用户头像:</label>
+                <div class="avatar-preview-and-input">
+                    <img id="userAvatarPreview" src="#" alt="用户头像预览" style="max-width: 60px; max-height: 60px; display: none; margin-top: 5px; border-radius: 50%; margin-right: 10px;">
+                    <!-- Hidden actual file input -->
+                    <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                    <!-- Custom button-like span that triggers the file input -->
+                    <label for="userAvatarInput" class="custom-file-upload-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-upload" viewBox="0 0 16 16" style="margin-right: 5px;">
+                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                        </svg>
+                        <span>选择头像</span>
+                    </label>
                 </div>
+            </div>
                 <div>
                     <label for="vcpServerUrl">VCP 服务器 URL:</label>
                     <input type="url" id="vcpServerUrl" name="vcpServerUrl" required>

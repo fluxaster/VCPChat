@@ -6,6 +6,7 @@ const fs = require('fs-extra'); // Using fs-extra for convenience
 const os = require('os');
 const WebSocket = require('ws'); // For VCPLog notifications
 const fileManager = require('./modules/fileManager'); // Import the new file manager
+const sharp = require('sharp'); // Add at the top
 
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
@@ -46,7 +47,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile('main.html');
-    // mainWindow.webContents.openDevTools(); // Uncomment for debugging
+    mainWindow.webContents.openDevTools(); // Uncomment for debugging
 
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -76,6 +77,107 @@ app.whenReady().then(() => {
     fs.ensureDirSync(AGENT_DIR);
     fs.ensureDirSync(USER_DATA_DIR);
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
+
+    //vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    // MAKE SURE THIS HANDLER IS CORRECTLY DEFINED AND NOT COMMENTED OUT
+    // AND PREFERABLY AT THE TOP LEVEL OR VERY EARLY IN app.whenReady()
+    //vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    ipcMain.handle('get-file-as-base-64', async (event, filePath) => {
+        try {
+            console.log(`[Main - get-file-as-base-64] ===== START REQUEST =====`);
+            console.log(`[Main - get-file-as-base64] Received raw filePath: "${filePath}"`);
+            if (!filePath || typeof filePath !== 'string') {
+                console.error('[Main - get-file-as-base-64] Invalid file path received:', filePath);
+                return { error: 'Invalid file path provided.', base64String: null };
+            }
+
+            const cleanPath = filePath.startsWith('file://') ? decodeURIComponent(filePath.substring(7)) : decodeURIComponent(filePath);
+            console.log(`[Main - get-file-as-base-64] Cleaned and Decoded path: "${cleanPath}"`);
+
+            if (!await fs.pathExists(cleanPath)) {
+                console.error(`[Main - get-file-as-base-64] File NOT FOUND at path: ${cleanPath}`);
+                return { error: `File not found at path: ${cleanPath}`, base64String: null };
+            }
+
+            const fileExtension = path.extname(cleanPath).toLowerCase();
+            const isImage = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(fileExtension);
+            const MAX_IMAGE_WIDTH = 1024;
+            const MAX_IMAGE_HEIGHT = 1024;
+            const IMAGE_QUALITY = 75;
+
+            if (isImage) {
+                console.log(`[Main - get-file-as-base-64] Processing image for VCP: ${cleanPath}`);
+                let imageBuffer = await fs.readFile(cleanPath); // Read original first
+                let image = sharp(imageBuffer);
+                const metadata = await image.metadata();
+
+                let needsProcessing = false; // Flag to check if any processing (resize/format change) happened
+
+                // Initial dimensions
+                let currentWidth = metadata.width;
+                let currentHeight = metadata.height;
+
+                // Check if resizing is needed
+                if (currentWidth > MAX_IMAGE_WIDTH || currentHeight > MAX_IMAGE_HEIGHT) {
+                     console.log(`[Main - get-file-as-base-64] Image needs resizing. Original: ${currentWidth}x${currentHeight}`);
+                     image = image.resize({
+                         width: MAX_IMAGE_WIDTH,
+                         height: MAX_IMAGE_HEIGHT,
+                         fit: sharp.fit.inside, // Ensures aspect ratio is maintained, and neither dimension exceeds max
+                         withoutEnlargement: true // Don't enlarge if smaller
+                     });
+                     needsProcessing = true;
+                }
+
+                // Check if format conversion or quality adjustment is needed
+                // Always re-encode to control quality and ensure a web-friendly format for VCP
+                if (fileExtension === '.png' && (!needsProcessing && metadata.size > 500000)) { // Example: Re-encode large PNGs
+                    console.log(`[Main - get-file-as-base-64] Re-encoding large PNG for size reduction.`);
+                    imageBuffer = await image.png({ quality: IMAGE_QUALITY + 5, compressionLevel: 6 }).toBuffer(); // Adjust quality/compression
+                    needsProcessing = true; // Technically it was processed
+                } else if (fileExtension !== '.jpg' && fileExtension !== '.jpeg' && fileExtension !== '.png' && fileExtension !== '.webp') { // Convert non-standard web formats
+                    console.log(`[Main - get-file-as-base-64] Converting image from ${fileExtension} to JPEG.`);
+                    imageBuffer = await image.jpeg({ quality: IMAGE_QUALITY }).toBuffer();
+                    needsProcessing = true;
+                } else if (needsProcessing) { // If it was resized, get the buffer from the modified sharp object
+                     console.log(`[Main - get-file-as-base-64] Image was resized, getting new buffer.`);
+                     // Determine format based on original or a default (e.g., JPEG)
+                    if (metadata.format === 'png' || metadata.format === 'gif' || metadata.format === 'webp') {
+                         imageBuffer = await image.png({ quality: IMAGE_QUALITY + 5 }).toBuffer();
+                     } else {
+                         imageBuffer = await image.jpeg({ quality: IMAGE_QUALITY }).toBuffer();
+                     }
+                } else {
+                     // If no resizing or specific format change was triggered, use original buffer
+                     // (but we might still want to enforce a quality check for very large JPEGs/WebPs)
+                     if ((fileExtension === '.jpg' || fileExtension === '.jpeg' || fileExtension === '.webp') && imageBuffer.length > 700000) { // Example threshold
+                        console.log(`[Main - get-file-as-base-64] Re-compressing large ${metadata.format}.`);
+                        imageBuffer = await image.jpeg({ quality: IMAGE_QUALITY }).toBuffer(); // or .webp()
+                     }
+                     // If it's a PNG and not processed, imageBuffer is still the original.
+                }
+
+
+                console.log(`[Main - get-file-as-base-64] Processed image. New buffer length: ${imageBuffer.length}`);
+                const base64String = imageBuffer.toString('base64');
+                console.log(`[Main - get-file-as-base-64] Successfully PROCESSED and converted "${cleanPath}" to Base64. Length: ${base64String.length}`);
+                console.log(`[Main - get-file-as-base-64] ===== END REQUEST (IMAGE SUCCESS) =====`);
+                return base64String;
+            } else {
+                // For non-images, proceed as before
+                const fileBuffer = await fs.readFile(cleanPath);
+                const base64String = fileBuffer.toString('base64');
+                console.log(`[Main - get-file-as-base-64] Successfully converted NON-IMAGE "${cleanPath}" to Base64. Length: ${base64String.length}`);
+                console.log(`[Main - get-file-as-base-64] ===== END REQUEST (NON-IMAGE SUCCESS) =====`);
+                return base64String;
+            }
+        } catch (error) {
+            console.error(`[Main - get-file-as-base-64] Error processing path "${filePath}":`, error.message, error.stack);
+            console.log(`[Main - get-file-as-base-64] ===== END REQUEST (ERROR) =====`);
+            return { error: `获取/处理文件Base64失败: ${error.message}`, base64String: null };
+        }
+    });
+    //^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     // --- Moved IPC Handler Registration ---
     ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle, theme) => { // Added theme parameter
@@ -141,6 +243,10 @@ app.whenReady().then(() => {
         textViewerWindow.on('closed', () => {
             console.log('[Main Process] textViewerWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== textViewerWindow); // Remove from track
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+                console.log('[Main Process] Attempting to focus mainWindow after textViewerWindow close.');
+                mainWindow.focus(); // Explicitly focus main window
+            }
         });
     });
     // --- End of Moved IPC Handler Registration ---
@@ -160,7 +266,7 @@ app.whenReady().then(() => {
                 const content = await fs.readFile(filePath, 'utf8');
                 
                 const lines = content.split('\n');
-                if (lines.length < 1) continue; 
+                if (lines.length < 1) continue;
 
                 const header = lines[0];
                 const noteContent = lines.slice(1).join('\n');
@@ -170,17 +276,17 @@ app.whenReady().then(() => {
                     const title = parts[0];
                     const username = parts[1];
                     const timestampStr = parts[2];
-                    const timestamp = parseInt(timestampStr, 10); 
+                    const timestamp = parseInt(timestampStr, 10);
 
                     const id = fileName.replace(/\.txt$/, '');
 
                     notes.push({
-                        id: id, 
+                        id: id,
                         title: title,
                         username: username,
                         timestamp: timestamp,
                         content: noteContent,
-                        fileName: fileName 
+                        fileName: fileName
                     });
                 } else {
                     console.warn(`跳过格式不正确的笔记文件: ${fileName}`);
@@ -296,6 +402,10 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] notesWindow has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+                console.log('[Main Process] Attempting to focus mainWindow after notesWindow close.');
+                mainWindow.focus(); // Explicitly focus main window
+            }
         });
     });
 
@@ -308,13 +418,13 @@ function formatTimestampForFilename(timestamp) {
             minWidth: 800,
             minHeight: 600,
             title: title || '我的笔记 (分享)',
-            parent: mainWindow, 
+            parent: mainWindow,
             modal: false,
             webPreferences: {
-                preload: path.join(__dirname, 'preload.js'), 
+                preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
                 nodeIntegration: false,
-                devTools: true 
+                devTools: true
             },
             icon: path.join(__dirname, 'assets', 'icon.png'),
             show: false
@@ -349,6 +459,10 @@ function formatTimestampForFilename(timestamp) {
         notesWindow.on('closed', () => {
             console.log('[Main Process] New notesWindow (from share) has been closed.');
             openChildWindows = openChildWindows.filter(win => win !== notesWindow);
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
+                console.log('[Main Process] Attempting to focus mainWindow after shared notesWindow close.');
+                mainWindow.focus(); // Explicitly focus main window
+            }
         });
     });
 
@@ -1117,9 +1231,16 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
             try {
                 const originalName = path.basename(filePath);
                 const ext = path.extname(filePath).toLowerCase();
-                let fileTypeHint = 'application/octet-stream';
-                if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
-                else if (['.mp3', '.wav', '.ogg'].includes(ext)) fileTypeHint = `audio/${ext.substring(1)}`;
+                let fileTypeHint = 'application/octet-stream'; // Default
+                // Basic image type detection
+                if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'].includes(ext)) {
+                    fileTypeHint = `image/${ext.substring(1)}`;
+                    if (ext === '.jpg') fileTypeHint = 'image/jpeg'; // Common practice
+                    if (ext === '.svg') fileTypeHint = 'image/svg+xml';
+                } else if (['.mp3', '.wav', '.ogg'].includes(ext)) {
+                    fileTypeHint = `audio/${ext.substring(1)}`;
+                }
+                // Add more types if needed
 
                 const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
                 storedFilesInfo.push(storedFile);
@@ -1133,32 +1254,6 @@ ipcMain.handle('select-files-to-send', async (event, agentId, topicId) => {
     return { success: false, attachments: [] }; 
 });
 
-ipcMain.handle('get-file-as-base64', async (event, filePath) => {
-    try {
-        console.log(`[Main - get-file-as-base64] Received request for filePath: "${filePath}"`);
-        if (!filePath || typeof filePath !== 'string') {
-            console.error('[Main - get-file-as-base64] Invalid file path received:', filePath);
-            throw new Error('Invalid file path provided.');
-        }
-        
-        const cleanPath = filePath.startsWith('file://') ? filePath.substring(7) : filePath;
-        console.log(`[Main - get-file-as-base64] Cleaned path: "${cleanPath}"`);
-        
-        if (!await fs.pathExists(cleanPath)) {
-            console.error(`[Main - get-file-as-base64] File not found at path: ${cleanPath}`);
-            throw new Error(`File not found at path: ${cleanPath}`);
-        }
-        
-        console.log(`[Main - get-file-as-base64] Reading file: ${cleanPath}`);
-        const fileBuffer = await fs.readFile(cleanPath);
-        const base64String = fileBuffer.toString('base64');
-        console.log(`[Main - get-file-as-base64] Successfully converted "${cleanPath}" to Base64, length: ${base64String.length}`);
-        return base64String;
-    } catch (error) {
-        console.error(`[Main - get-file-as-base64] Error processing path "${filePath}":`, error.message);
-        return { error: `获取文件Base64失败: ${error.message}` };
-    }
-});
 
 ipcMain.handle('get-text-content', async (event, filePath, fileType) => {
     try {
@@ -1288,18 +1383,21 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
             const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : '未知服务端错误')}`;
             console.error('[Main - sendToVCP] Propagating error:', errorMessageToPropagate, 'Full errorData:', errorData);
 
+            // CRITICAL FOR STREAMING: Send error back if stream was intended
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
+                console.error('[Main - sendToVCP] Sending stream error back to renderer:', errorMessageToPropagate, 'messageId:', messageId);
                 event.sender.send('vcp-stream-chunk', { type: 'error', error: errorMessageToPropagate, details: errorData, messageId: messageId });
-                return { streamError: true, errorDetail: errorData };
+                return { streamError: true, errorDetail: errorData }; // Indicate error to the .invoke() caller
             }
+            // For non-streaming, throw error
             const err = new Error(errorMessageToPropagate);
-            err.details = errorData; 
+            err.details = errorData;
             err.status = response.status;
             throw err;
         }
 
         if (modelConfig.stream === true) {
-            console.log('VCP响应: 开始流式处理');
+            console.log(`VCP响应: 开始流式处理 for messageId: ${messageId}`); // Add messageId
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
@@ -1320,7 +1418,7 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                                 if (jsonData === '[DONE]') {
                                     console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
                                     event.sender.send('vcp-stream-chunk', { type: 'end', messageId: messageId });
-                                    return; 
+                                    return;
                                 }
                                 try {
                                     const parsedChunk = JSON.parse(jsonData);
@@ -1334,13 +1432,14 @@ ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelCo
                     }
                 } catch (streamError) {
                     console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
-                    event.sender.send('vcp-stream-chunk', { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId });
+                    // In processStream's catch block:
+                    event.sender.send('vcp-stream-chunk', { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId }); // Ensure messageId is here
                 } finally {
                     reader.releaseLock();
                 }
             }
-            processStream(); 
-            return { streamingStarted: true }; 
+            processStream();
+            return { streamingStarted: true, messageId: messageId }; // Return messageId
         } else {
             console.log('VCP响应: 非流式处理');
             const vcpResponse = await response.json();

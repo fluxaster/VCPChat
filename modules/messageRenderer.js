@@ -843,18 +843,17 @@ function renderMessage(message, isInitialLoad = false) {
         // Image click/context menu (ensure this happens after marked parsing)
 
         const imagesInContent = contentDiv.querySelectorAll('img');
-        imagesInContent.forEach(img => {
-            if (!img.classList.contains('message-attachment-image-thumbnail')) {
-                img.style.cursor = 'pointer';
-                img.title = `点击在新窗口预览: ${img.alt || img.src}\n右键可复制图片`;
-                img.addEventListener('click', (e) => {
-                    e.stopPropagation(); 
-                    mainRendererReferences.electronAPI.openImageInNewWindow(img.src, img.alt || img.src.split('/').pop() || 'AI 图片');
-                });
-                img.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
+        imagesInContent.forEach(imgElement => { // Use a clear loop variable name like imgElement
+            if (!imgElement.classList.contains('message-attachment-image-thumbnail')) { // Don't re-attach to own thumbnails
+                imgElement.style.cursor = 'pointer';
+                imgElement.title = `点击在新窗口预览: ${imgElement.alt || imgElement.src}\n右键可复制图片`;
+                imgElement.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                    mainRendererReferences.electronAPI.openImageInNewWindow(imgElement.src, imgElement.alt || imgElement.src.split('/').pop() || 'AI 图片');
+                });
+                imgElement.addEventListener('contextmenu', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    mainRendererReferences.electronAPI.showImageContextMenu(imgElement.src);
                 });
             }
         });
@@ -927,9 +926,9 @@ function renderMessage(message, isInitialLoad = false) {
                     e.stopPropagation();
                     mainRendererReferences.electronAPI.openImageInNewWindow(att.src, att.name);
                 };
-                img.addEventListener('contextmenu', (e) => {
+                attachmentElement.addEventListener('contextmenu', (e) => {
                     e.preventDefault(); e.stopPropagation();
-                    mainRendererReferences.electronAPI.showImageContextMenu(img.src);
+                    mainRendererReferences.electronAPI.showImageContextMenu(att.src);
                 });
             } else if (att.type.startsWith('audio/')) {
                 attachmentElement = document.createElement('audio');

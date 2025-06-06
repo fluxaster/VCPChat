@@ -39,7 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // File Handling
     handleFilePaste: (agentId, topicId, fileData) => ipcRenderer.invoke('handle-file-paste', agentId, topicId, fileData),
     selectFilesToSend: (agentId, topicId) => ipcRenderer.invoke('select-files-to-send', agentId, topicId),
-    getFileAsBase64: (filePath) => ipcRenderer.invoke('get-file-as-base64', filePath),
+    getFileAsBase64: (filePath) => ipcRenderer.invoke('get-file-as-base-64', filePath), // Check this line
     getTextContent: (filePath, fileType) => ipcRenderer.invoke('get-text-content', filePath, fileType),
     handleTextPasteAsFile: (agentId, topicId, textContent) => ipcRenderer.invoke('handle-text-paste-as-file', agentId, topicId, textContent),
     handleFileDrop: (agentId, topicId, droppedFilesData) => ipcRenderer.invoke('handle-file-drop', agentId, topicId, droppedFilesData),

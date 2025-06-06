@@ -771,24 +771,23 @@ async function handleSendMessage() {
                     if (att.type.startsWith('image/')) {
                         try {
                             const internalPath = att.src;
-                            const base64Result = await window.electronAPI.getFileAsBase64(internalPath);
-                            
-                            if (base64Result && base64Result.error) {
+                            const base64Result = await window.electronAPI.getFileAsBase64(internalPath); // Check this line
+
+                            // Updated error checking:
+                            if (typeof base64Result === 'object' && base64Result !== null && base64Result.error) {
                                 console.error(`[Renderer - handleSendMessage] Error from getFileAsBase64 for ${att.name} (internal: ${internalPath}):`, base64Result.error);
-                                return { type: att.type, name: att.name, error: `Failed to load image/audio data: ${base64Result.error}` };
+                                // Optionally add an error placeholder to the attachment or skip it
+                                return { type: att.type, name: att.name, error: `Failed to load image data: ${base64Result.error}` };
                             } else if (typeof base64Result === 'string' && base64Result.length > 0) {
+                                console.log(`[Renderer - handleSendMessage] Image ${att.name} - Base64 length: ${base64Result.length}`); // <<< ADD THIS LOG
                                 return { type: att.type, name: att.name, data: base64Result, internalPath: internalPath };
                             } else {
-                                console.warn(`[Renderer - handleSendMessage] getFileAsBase64 returned unexpected data for ${att.name} (internal: ${internalPath}):`,
-                                    (typeof base64Result === 'string' && base64Result.length > 200)
-                                        ? `${base64Result.substring(0,50)}...[String, length: ${base64Result.length}]`
-                                        : base64Result
-                                );
-                                return { type: att.type, name: att.name, error: "Failed to load image/audio data: Unexpected return" };
+                                console.warn(`[Renderer - handleSendMessage] getFileAsBase64 returned unexpected or empty data for ${att.name} (internal: ${internalPath}). Result:`, base64Result);
+                                return { type: att.type, name: att.name, error: "Failed to load image data: Empty or unexpected result" };
                             }
                         } catch (error) {
                             console.error(`[Renderer - handleSendMessage] Exception during getBase64 for ${att.name} (internal: ${att.src}):`, error);
-                            return { type: att.type, name: att.name, error: `Failed to load image/audio data: ${error.message}` };
+                            return { type: att.type, name: att.name, error: `Failed to load image data: ${error.message}` };
                         }
                     } else if (att.type.startsWith('text/') ||
                                  ['application/pdf',
@@ -1321,11 +1320,12 @@ function setupEventListeners() {
                     console.error(`Error processing selected file ${att.name || 'unknown'}: ${att.error}`);
                     alert(`处理文件 ${att.name || '未知文件'} 失败: ${att.error}`);
                 } else {
+                    // THIS IS THE KEY PART:
                     attachedFiles.push({
-                        file: { name: att.name, type: att.type, size: att.size },
-                        localPath: att.internalPath, 
-                        originalName: att.name,
-                        _fileManagerData: att
+                        file: { name: att.name, type: att.type, size: att.size }, // Basic file info
+                        localPath: att.internalPath,    // For sending to VCP if needed as path later
+                        originalName: att.name,         // For display
+                        _fileManagerData: att           // Store the WHOLE object from main process
                     });
                 }
             });
@@ -1684,49 +1684,66 @@ function updateAttachmentPreview() {
         console.error('[Renderer] updateAttachmentPreview: attachmentPreviewArea is null or undefined!');
         return;
     }
- 
+
     attachmentPreviewArea.innerHTML = '';
     if (attachedFiles.length === 0) {
         attachmentPreviewArea.style.display = 'none';
         return;
     }
     attachmentPreviewArea.style.display = 'flex';
- 
+
     attachedFiles.forEach((af, index) => {
         const prevDiv = document.createElement('div');
         prevDiv.className = 'attachment-preview-item';
-        prevDiv.title = af.originalName;
+        const displayName = af.originalName || (af.file ? af.file.name : '未知文件');
+        prevDiv.title = displayName;
 
-        const iconSpan = document.createElement('span');
-        iconSpan.className = 'file-preview-icon';
-        if (af.file.type.startsWith('image/')) {
-            iconSpan.textContent = '🖼️'; 
-        } else if (af.file.type.startsWith('audio/')) {
-            iconSpan.textContent = '🎵'; 
-        } else if (af.file.type.startsWith('video/')) {
-            iconSpan.textContent = '🎞️'; 
-        } else if (af.file.type.includes('pdf')) {
-            iconSpan.textContent = '📄'; 
+        let iconOrThumbElement; // Renamed for clarity
+        const fileManagerData = af._fileManagerData;
+
+        if (fileManagerData && fileManagerData.type && fileManagerData.type.startsWith('image/') && fileManagerData.internalPath) {
+            iconOrThumbElement = document.createElement('img');
+            iconOrThumbElement.className = 'file-preview-thumbnail';
+            iconOrThumbElement.src = fileManagerData.internalPath;
+            iconOrThumbElement.alt = displayName;
+            iconOrThumbElement.onerror = () => {
+                const fallbackIcon = document.createElement('span');
+                fallbackIcon.className = 'file-preview-icon';
+                fallbackIcon.textContent = '⚠️';
+                if (prevDiv.contains(iconOrThumbElement)) { // Ensure it's still there before replacing
+                    prevDiv.replaceChild(fallbackIcon, iconOrThumbElement);
+                }
+            };
         } else {
-            iconSpan.textContent = '📎'; 
+            iconOrThumbElement = document.createElement('span');
+            iconOrThumbElement.className = 'file-preview-icon';
+            const fileType = fileManagerData ? fileManagerData.type : (af.file ? af.file.type : '');
+            if (fileType.startsWith('image/')) iconOrThumbElement.textContent = '🖼️';
+            else if (fileType.startsWith('audio/')) iconOrThumbElement.textContent = '🎵';
+            else if (fileType.startsWith('video/')) iconOrThumbElement.textContent = '🎞️';
+            else if (fileType.includes('pdf')) iconOrThumbElement.textContent = '📄';
+            else if (fileManagerData && fileManagerData.type === 'error/file-processing') iconOrThumbElement.textContent = '⚠️';
+            else iconOrThumbElement.textContent = '📎';
         }
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'file-preview-name';
-        nameSpan.textContent = af.originalName.length > 20 ? af.originalName.substring(0, 17) + '...' : af.originalName;
-        
+        nameSpan.textContent = displayName.length > 15 ? displayName.substring(0, 12) + '...' : displayName;
+
         const removeBtn = document.createElement('button');
-        removeBtn.className = 'file-preview-remove-btn';
-        removeBtn.innerHTML = '&times;'; 
+        removeBtn.className = 'file-preview-remove-btn-inline'; // New class for inline button
+        removeBtn.innerHTML = '×';
         removeBtn.title = '移除此附件';
         removeBtn.onclick = () => {
             attachedFiles.splice(index, 1);
             updateAttachmentPreview();
         };
 
-        prevDiv.appendChild(iconSpan);
+        // Append in desired order: icon/thumb, then name, then remove button
+        prevDiv.appendChild(iconOrThumbElement);
         prevDiv.appendChild(nameSpan);
-        prevDiv.appendChild(removeBtn);
+        prevDiv.appendChild(removeBtn); // Now appended as a direct child in flow
+
         attachmentPreviewArea.appendChild(prevDiv);
     });
 }

@@ -1686,61 +1686,113 @@ body.light-theme .notification-item {
 }
 
 .attachment-preview-item {
-    background-color: var(--accent-bg); 
-    color: var(--primary-text); 
-    border-radius: 16px; 
-    padding: 2px 6px; 
-    display: flex;
-    align-items: center;
+    background-color: var(--accent-bg);
+    color: var(--primary-text);
+    border-radius: 16px;
+    padding: 4px 8px;
+    display: flex; /* This is important for aligning children */
+    align-items: center; /* Vertically align icon, name, and button */
     font-size: 0.9em;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     transition: all 0.2s ease-in-out;
-    cursor: default; 
-    position: relative; 
-}
-
-.attachment-preview-item:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    cursor: default;
+    max-width: 180px; /* Adjusted max-width if needed */
+    overflow: hidden;
+    /* position: relative; /* No longer needed for absolutely positioned children within */
 }
 
 .file-preview-icon {
-    margin-right: 4px;
-    font-size: 0.9em; 
+    margin-right: 6px;
+    font-size: 1.2em;
+    line-height: 1;
+    flex-shrink: 0; /* Prevent icon from shrinking */
+}
+
+.file-preview-thumbnail {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 6px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0; /* Prevent thumbnail from shrinking */
 }
 
 .file-preview-name {
-    display: none; 
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1; /* Allow name to take available space */
+    /* margin-right: 20px; /* Removed, button will be next to it */
 }
 
+/* Remove or comment out the old absolute positioned button style */
+/*
 .file-preview-remove-btn {
-    position: absolute; 
-    top: -8px; 
-    right: -8px; 
-    background: transparent; 
-    border: none;
-    color: var(--danger-color); 
-    margin: 0; 
-    padding: 0; 
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--accent-bg);
+    border: 1px solid var(--danger-color);
+    color: var(--danger-color);
+    margin: 0;
+    padding: 0;
     cursor: pointer;
-    font-size: 1.2em; 
+    font-size: 1.1em;
     line-height: 1;
-    border-radius: 50%; 
-    width: 20px; 
-    height: 20px; 
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, color 0.2s ease;
-    z-index: 10; 
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.1s ease;
+    z-index: 10;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
 .file-preview-remove-btn:hover {
-    background-color: var(--danger-hover-bg); 
-    color: white; 
+    background-color: var(--danger-hover-bg);
+    color: white;
+    transform: scale(1.1);
 }
-.attachment-preview-area .file-preview { 
-    display: none; 
+*/
+
+/* New styles for the inline remove button */
+.file-preview-remove-btn-inline {
+    background: transparent; /* Make it look less like a bulky button */
+    border: none;
+    color: var(--secondary-text); /* Softer color initially */
+    padding: 0 4px; /* Minimal padding */
+    margin-left: 6px; /* Space between name and button */
+    cursor: pointer;
+    font-size: 1.4em; /* Make the '×' a bit larger and easier to click */
+    line-height: 1;
+    border-radius: 4px; /* Optional: slight rounding */
+    transition: color 0.2s ease, background-color 0.2s ease;
+    flex-shrink: 0; /* Prevent button from shrinking */
+}
+
+.file-preview-remove-btn-inline:hover {
+    color: var(--danger-color); /* Change to danger color on hover */
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2); /* Subtle hover background */
+}
+
+body.light-theme .file-preview-remove-btn-inline {
+    color: var(--secondary-text-light);
+}
+
+body.light-theme .file-preview-remove-btn-inline:hover {
+    color: var(--danger-color-light);
+    background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.2); /* Check if these RGB vars are defined */
+     /* Fallback if RGB vars not defined well for light theme */
+    /* background-color: #e0e0e0; */
+}
+
+
+/* Ensure the old general .file-preview is not interfering */
+.attachment-preview-area .file-preview {
+    display: none;
 }
 
 .message-attachment-image-thumbnail {
@@ -2067,4 +2119,84 @@ body.light-theme .floating-toast-notification {
     display: block;
     text-align: right;
     margin-top: 8px;
+}
+
+/* Styles for the avatar setting area in the modal */
+.avatar-setting-container {
+    display: flex;
+    flex-direction: column; /* Stack label and preview/input */
+    margin-bottom: 15px; /* Same margin as other input groups */
+}
+
+.avatar-preview-and-input {
+    display: flex;
+    align-items: center; /* Align preview image and button vertically */
+    margin-top: 5px; /* Space below the "用户头像:" label */
+}
+
+/* Styles for the custom file upload button */
+.custom-file-upload-button {
+    display: inline-flex; /* Use inline-flex to align icon and text */
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    border: 1px solid var(--button-bg); /* Use existing button border color */
+    background-color: var(--button-bg);
+    color: var(--primary-text); /* Match sidebar button text color */
+    border-radius: 8px; /* Match sidebar button border-radius */
+    font-size: 0.95em; /* Match sidebar button font-size */
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    font-family: inherit; /* Ensure it uses the body font */
+}
+
+.custom-file-upload-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+/* Light theme adjustments for the custom button */
+body.light-theme .custom-file-upload-button {
+    color: #ffffff; /* Match light theme sidebar button text color */
+    border-color: var(--button-bg-light);
+    background-color: var(--button-bg-light);
+}
+
+body.light-theme .custom-file-upload-button:hover {
+    color: #ffffff;
+    border-color: var(--button-hover-bg-light);
+    background-color: var(--button-hover-bg-light);
+}
+
+/* Ensure the image preview is to the left of the button */
+#userAvatarPreview {
+    margin-right: 10px; /* Add some space between preview and button */
+    /* Other styles already defined inline or in your CSS */
+}
+
+/* Hide the default file input styling (it's already display:none, but this is good practice) */
+#userAvatarInput {
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+/* General modal input styling - ensure consistency */
+.modal-content input[type="file"] { /* This rule might become less relevant if the input is hidden */
+    margin-bottom: 15px;
+    /* You might not need width: calc(100% - 20px); if it's hidden */
+}
+
+/* Fix the specific input[type="file"] to remove its inherent button appearance if it's ever shown */
+input[type="file"]::-webkit-file-upload-button,
+input[type="file"]::file-selector-button {
+    /* If the input is display:none, these won't be visible.
+       But if it were visible, you'd set 'display: none !important;' here
+       or style them to match your custom button.
+       For now, since the input itself is hidden, this is mostly for completeness
+       or if you decide to show the input for some reason. */
+    display: none !important; /* Ensure the default button is hidden */
 }
